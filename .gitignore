@@ -1,0 +1,57 @@
+# --- wa-evidence-collector ---
+# Runtime data: the bridge store holds session keys + full message history.
+store/
+bridge/store/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.bridge-token
+qr.png
+qr.txt
+# Local config (only config.yaml.example is committed).
+config.yaml
+.env
+.env.local
+# Upload credentials (service-account / OAuth JSON, access keys).
+# NEVER commit these: the example config only holds placeholders.
+credentials/
+*-service-account.json
+*-credentials.json
+# Collected evidence output (your data, stays on your disk).
+evidence/
+# Built binaries.
+# (anchored: the bare name also matched cmd/wa-evidence-collector/,
+# which wrongly kept main.go out of the repo until v0.3.0.)
+/wa-evidence-collector
+bridge/whatsapp-bridge
+bridge/whatsapp-client
+pairphone/pairphone
+*.exe
+
+# --- Upstream leftovers (kept from the whatsapp-mcp fork) ---
+*.log
+claude_desktop_config.json
+.claude/settings.local.json
+.DS_Store
+**/.DS_Store
+node_modules/
+package-lock.json
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+*.egg
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.pytest_cache/
+.coverage
+htmlcov/
+/store

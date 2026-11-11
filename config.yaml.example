@@ -1,0 +1,153 @@
+# wa-evidence-collector example config.
+# Copy to config.yaml and edit. NEVER commit a config.yaml with real data.
+# All JIDs below are placeholders (all-zero / 555 fictional range).
+
+bridge:
+  # Base URL of the bridge REST API.
+  api_url: "http://127.0.0.1:8080/api"
+  # File holding the bridge bearer token (created by the bridge at first start).
+  token_file: "./bridge/store/.bridge-token"
+  # SQLite store the collector reads (read-only).
+  db_path: "./bridge/store/messages.db"
+  # Bridge binary, used only when autostart is true.
+  binary: "./bridge/whatsapp-bridge"
+  # Start the bridge as a child process. Set false if you run it yourself
+  # (systemd, tmux, ...) and only want the collector + scheduler here.
+  autostart: true
+  # Seconds to wait for /api/health 200. On timeout the collector keeps
+  # going in degraded mode (DB reads work, media downloads fail).
+  health_timeout_seconds: 30
+
+collection:
+  # Output root. Runs write to output_dir/YYYYMMDD/ plus state.json.
+  output_dir: "./evidence"
+  # ONLY these chats are read. Group JIDs end in @g.us, 1:1 chats in
+  # @s.whatsapp.net (or @lid). Everything else in the store is ignored.
+  allowlist:
+    - "120363000000000000@g.us"
+    - "120363000000000001@g.us"
+  # Default lookback for --once runs, in hours.
+  lookback_hours: 24
+  # Mask sender identities and phone-like numbers in exports (default true).
+  redact: true
+
+media:
+  # Download media for messages that have any (via the bridge).
+  download: true
+  # Attempts per message before giving up.
+  max_attempts: 3
+  # Seconds between attempts.
+  retry_delay_seconds: 30
+
+# Semantic dedup (second pass after exact dedup by message ID + content
+# hash). Messages that are the same event reworded or cross-posted
+# export as ONE row with all sources listed, instead of two rows.
+# Pure Go, offline: token overlap (Jaccard) + shared links (incl. Zoom
+# meeting IDs), explicit dates/times, media keys + time proximity.
+# Merging is deliberately conservative: same topic + same date but a
+# different event time keeps BOTH rows with a "jam berbeda" note, and
+# when in doubt nothing merges (a "mirip dengan" note is added instead).
+dedup:
+  # Enable the semantic pass. When false, every new message is its own
+  # row (exact dedup still applies).
+  enabled: true
+  # Token overlap (Jaccard) at or above this merges two messages.
+  threshold: 0.55
+  # Token overlap at or above this (but below threshold) keeps both
+  # rows and adds a "mirip dengan ..." note instead of merging.
+  note_threshold: 0.35
+  # Token overlap at or above this lets a correction message merge
+  # with the message it corrects. Lower than threshold on purpose: a
+  # correction rewords the original (and may change its time/date).
+  correction_threshold: 0.30
+  # Messages further apart than this (by message timestamp) are never
+  # merged or noted.
+  time_window_hours: 48
+  # Whole words that mark a message as a correction of an earlier one.
+  correction_markers:
+    - "ralat"
+    - "koreksi"
+    - "revisi"
+    - "perubahan"
+    - "update"
+    - "perbaikan"
+    - "diperbaiki"
+
+# Remote upload of a run's exports (optional, OFF by default: local-only).
+# When enabled, each row's evidence file (downloaded media or chat
+# render) is uploaded first and its remote URL lands in the row's
+# Link Drive column; the export files (JSON, CSV, XLSX, manifest,
+# monthly recap) are uploaded afterwards. Remote layout mirrors the
+# local one: <root>/<YYYYMMDD>/media/ + <root>/<YYYYMMDD>/dokumen/.
+upload:
+  # Set true to upload after every run.
+  enabled: false
+  # Backend: "drive" or "s3".
+  backend: "drive"
+  # Attempts per file before giving up.
+  max_attempts: 3
+  # Seconds between attempts.
+  retry_delay_seconds: 10
+  # When true, any upload failure fails the whole run. When false
+  # (default), failures are logged, the local export is kept, and the
+  # row's link stays empty.
+  strict: false
+  drive:
+    # Service-account JSON or OAuth authorized-user JSON. NEVER commit
+    # this file (see .gitignore: credentials/).
+    credentials_file: "./credentials/drive-service-account.json"
+    # Remote root folder: exactly one of folder_id / folder_path.
+    # folder_id is a Drive folder ID (all-zero placeholder below).
+    folder_id: "00000000000000000000000000000000"
+    # folder_path is resolved/created from the Drive root, e.g. "Evidence".
+    folder_path: ""
+  s3:
+    # S3-compatible endpoint, e.g. https://<account>.r2.cloudflarestorage.com
+    # or http://127.0.0.1:9000 for MinIO. Required when backend is s3.
+    endpoint: "https://000000000000.r2.cloudflarestorage.com"
+    # Region (R2 uses "auto").
+    region: "auto"
+    # Bucket name (placeholder below).
+    bucket: "wa-evidence-example"
+    # Key prefix under the bucket (may be empty).
+    prefix: "evidence"
+    # Fallback credentials. Prefer the environment instead
+    # (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) and leave these empty.
+    # NEVER commit real credentials.
+    access_key: ""
+    secret_key: ""
+    # Base URL for returned object URLs (e.g. a CDN). Empty =
+    # endpoint/bucket/key.
+    public_url_base: ""
+    # Path-style addressing (endpoint/bucket/key). Required for MinIO/R2.
+    use_path_style: true
+
+# Agenda extraction (one candidate per event, from the message text).
+# A candidate MUST have a date and a time; when one is missing it is
+# marked "belum lengkap" (never guessed). "Sampai selesai" / "s.d.
+# selesai" with no end time means the event runs
+# until_finished_minutes after the start (the assumed end is flagged
+# on the candidate). Relative dates ("hari ini", "besok", "Senin
+# depan") resolve against the MESSAGE's own timestamp (WIB), never
+# against today. No calendar events are created: candidates are
+# written to Agenda-<YYYYMMDD>.json plus an "Agenda" sheet in the
+# daily Excel, for the operator to select from.
+agenda:
+  # Enable agenda extraction (writes Agenda-<YYYYMMDD>.json per run).
+  enabled: true
+  # Minutes added to the start when the text says "sampai selesai".
+  until_finished_minutes: 120
+  # Timezone event times are read in ("WIB" or "Asia/Jakarta").
+  timezone: "WIB"
+
+# Built-in schedules. Each entry runs the collector for the window ending
+# at run time. Spec is a 5-field cron expression
+# (minute hour day-of-month month day-of-week) or a descriptor
+# (@daily, @weekly, @every 1h). Empty list = idle (use --once).
+schedules:
+  - spec: "30 6 * * 1-6"
+    label: "morning"
+    window_hours: 2
+  - spec: "0 20 * * 1-5"
+    label: "evening"
+    window_hours: 13
